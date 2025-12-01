@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# This file is used to set the capability for the libnf_ex
+#
+# before using this file, run the command:
+# sudo setcap 'cap_setpcap+ep' set_libnf_ex_cap
+#
+
+file="${0%/*}/../priv/port_nftables"
+
+chmod 750 $file
+sudo /usr/sbin/setcap cap_net_admin=ep $file
+/usr/sbin/getcap $file
