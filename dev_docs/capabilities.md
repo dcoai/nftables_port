@@ -1,14 +1,14 @@
-# Linux Capabilities Setup for NFTex
+# Linux Capabilities Setup for NFTables.Port
 
 ## Overview
 
-NFTex requires the `CAP_NET_ADMIN` Linux capability to perform netlink operations that communicate with the kernel's nftables subsystem. This document explains what capabilities are, why they're needed, and how to configure them for different deployment scenarios.
+NFTables.Port requires the `CAP_NET_ADMIN` Linux capability to perform netlink operations that communicate with the kernel's nftables subsystem. This document explains what capabilities are, why they're needed, and how to configure them for different deployment scenarios.
 
 ### What are Linux Capabilities?
 
 Linux capabilities divide the privileges traditionally associated with root into distinct units. Instead of running as root (which grants all privileges), a process can be granted only the specific capabilities it needs. This follows the **principle of least privilege** and reduces security risks.
 
-### Why NFTex Needs CAP_NET_ADMIN
+### Why NFTables.Port Needs CAP_NET_ADMIN
 
 The `CAP_NET_ADMIN` capability allows a process to:
 - Open `NETLINK_NETFILTER` sockets
@@ -17,9 +17,9 @@ The `CAP_NET_ADMIN` capability allows a process to:
 
 Without this capability, operations like creating tables, chains, and rules will fail with `EPERM` (Operation not permitted).
 
-### NFTex Security Model
+### NFTables.Port Security Model
 
-When the NFTex port process starts, it:
+When the NFTables.Port port process starts, it:
 1. **Drops all capabilities** except CAP_NET_ADMIN (principle of least privilege)
 2. **Sets PR_SET_NO_NEW_PRIVS** to prevent gaining additional privileges
 3. **Sets PR_SET_DUMPABLE=0** to prevent debugging/core dumps
@@ -29,7 +29,7 @@ This ensures the process runs with the absolute minimum privileges needed.
 
 ## Quick Start (Development)
 
-The fastest way to get NFTex working with kernel operations:
+The fastest way to get NFTables.Port working with kernel operations:
 
 ```bash
 # Compile the project
@@ -160,7 +160,7 @@ sudo capsh --caps="cap_net_admin+eip cap_setpcap,cap_setuid,cap_setgid+ep" \
 
 ### Method 4: Running Without Capabilities (Limited Functionality)
 
-NFTex can run without CAP_NET_ADMIN, but with reduced functionality.
+NFTables.Port can run without CAP_NET_ADMIN, but with reduced functionality.
 
 ```bash
 # Just run normally
@@ -211,7 +211,7 @@ priv/port_nftables cap_net_admin=ep
 
 ### Check if Process Has the Capability
 
-While NFTex is running:
+While NFTables.Port is running:
 
 ```bash
 # Find the process ID
@@ -229,13 +229,13 @@ getpcaps <PID>
 From IEx:
 
 ```elixir
-{:ok, pid} = NFTex.start_link()
+{:ok, pid} = NFTables.Port.start_link()
 
 # Try to open a netlink socket
-case NFTex.Kernel.Netlink.socket_open(pid) do
+case NFTables.Port.Kernel.Netlink.socket_open(pid) do
   {:ok, socket_id} ->
     IO.puts("✓ CAP_NET_ADMIN is working!")
-    NFTex.Kernel.Netlink.socket_close(pid, socket_id)
+    NFTables.Port.Kernel.Netlink.socket_close(pid, socket_id)
 
   {:error, reason} ->
     IO.puts("✗ Failed: #{reason}")
@@ -320,7 +320,7 @@ CMD ["mix", "run", "--no-halt"]
 
 Run the container with:
 ```bash
-docker run --cap-add=NET_ADMIN --cap-add=SETFCAP my-nftex-app
+docker run --cap-add=NET_ADMIN --cap-add=SETFCAP my-nftables_port-app
 ```
 
 ## Production Deployment
@@ -331,28 +331,28 @@ Example systemd unit file:
 
 ```ini
 [Unit]
-Description=NFTex Application
+Description=NFTables.Port Application
 After=network.target
 
 [Service]
 Type=simple
-User=nftex
-Group=nftex
-WorkingDirectory=/opt/nftex
+User=nftables_port
+Group=nftables_port
+WorkingDirectory=/opt/nftables_port
 Environment="MIX_ENV=prod"
 
 # Set capabilities before starting
-ExecStartPre=/usr/sbin/setcap cap_net_admin+ep /opt/nftex/priv/port_nftables
+ExecStartPre=/usr/sbin/setcap cap_net_admin+ep /opt/nftables_port/priv/port_nftables
 
 # Start the application
-ExecStart=/opt/nftex/bin/my_app start
+ExecStart=/opt/nftables_port/bin/my_app start
 
 # Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/nftex
+ReadWritePaths=/var/lib/nftables_port
 
 [Install]
 WantedBy=multi-user.target

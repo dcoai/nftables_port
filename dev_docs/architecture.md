@@ -349,17 +349,21 @@ In steady state, the system is idle and waiting for requests:
 ### Request Processing
 
 ```mermaid
-stateDiagram-v2
-    [*] --> RequestArrives
-    RequestArrives --> HandleCall: Request arrives
-    HandleCall: handle_call/3<br/>- Send to port<br/>- Store caller<br/>- Return :noreply
-    HandleCall --> PortProcessing: Caller blocked on<br/>GenServer.call
-    PortProcessing: Port processes<br/>request
-    PortProcessing --> HandleInfo
-    HandleInfo: handle_info/2<br/>{:data, response}<br/>- Reply to caller<br/>- Clear pending
-    HandleInfo --> CallerUnblocked
-    CallerUnblocked: Caller unblocked,<br/>receives response
-    CallerUnblocked --> [*]
+flowchart TD
+    Start([Request arrives])
+    HandleCall["handle_call/3
+    - Send to port
+    - Store caller
+    - Return :noreply"]
+    Processing["Port processes request
+    (Caller blocked on GenServer.call)"]
+    HandleInfo["handle_info/2
+    {:data, response}
+    - Reply to caller
+    - Clear pending"]
+    Done([Caller unblocked, receives response])
+
+    Start --> HandleCall --> Processing --> HandleInfo --> Done
 ```
 
 ### Shutdown Sequence

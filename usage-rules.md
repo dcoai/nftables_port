@@ -1,4 +1,4 @@
-# Usage Rules for NFTex Project
+# Usage Rules for NFTables.Port Project
 
 ## Test Principles
 * never write tests which hook to live network tables like input, output, forward, nat, etc.  Always use isolated tables.

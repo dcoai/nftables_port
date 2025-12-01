@@ -2,13 +2,13 @@
 
 ## Overview
 
-NFTex provides Elixir bindings to Linux nftables via libnftables. As firewall management is a security-critical operation, this document outlines security considerations, best practices, and the vulnerability disclosure policy.
+NFTables.Port provides Elixir bindings to Linux nftables via libnftables. As firewall management is a security-critical operation, this document outlines security considerations, best practices, and the vulnerability disclosure policy.
 
 ## Privilege Requirements
 
 ### CAP_NET_ADMIN Capability
 
-NFTex requires the `CAP_NET_ADMIN` Linux capability to modify firewall rules. This is enforced at the native port level.
+NFTables.Port requires the `CAP_NET_ADMIN` Linux capability to modify firewall rules. This is enforced at the native port level.
 
 **Required Setup:**
 ```bash
@@ -45,7 +45,7 @@ The native port will refuse to start if invalid permissions are detected with ca
 ### 1. Input Validation
 
 #### Table, Chain, and Set Names
-- Always validate names before passing to NFTex
+- Always validate names before passing to NFTables.Port
 - Maximum length: typically 256 characters
 - Avoid special characters that could cause issues
 - Do not construct names from untrusted user input directly
@@ -201,7 +201,7 @@ def block_user_ip(pid, user_ip) do
 end
 ```
 
-### ❌ Don't: Run NFTex as Root
+### ❌ Don't: Run NFTables.Port as Root
 
 ```elixir
 # BAD: Running as root unnecessarily
@@ -263,7 +263,7 @@ end
 
 ```elixir
 # Secure baseline firewall
-{:ok, pid} = NFTex.start_link()
+{:ok, pid} = NFTables.Port.start_link()
 
 # One-line secure setup
 :ok = Policy.setup_basic_firewall(pid,
@@ -283,7 +283,7 @@ RuleBuilder.new(pid, "filter", "INPUT")
 ### Hardened Web Server
 
 ```elixir
-{:ok, pid} = NFTex.start_link()
+{:ok, pid} = NFTables.Port.start_link()
 
 # Default deny
 :ok = Policy.setup_basic_firewall(pid,
@@ -345,7 +345,7 @@ Include:
 
 ## Security Checklist
 
-When deploying NFTex in production:
+When deploying NFTables.Port in production:
 
 - [ ] CAP_NET_ADMIN capability set correctly
 - [ ] Port binary has secure permissions (750 or 700)
@@ -369,7 +369,7 @@ When deploying NFTex in production:
 
 ### Built-In Security
 
-NFTex includes several built-in security features:
+NFTables.Port includes several built-in security features:
 
 1. **Permission Validation**
    - Port binary checks file permissions before starting
