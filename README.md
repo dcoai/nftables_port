@@ -1,10 +1,12 @@
 # NFTables.Port
 
-Port component for [NFTables](https://github.com/yourusername/nftables). Provides a Zig-based native port executable for communicating with Linux nftables via the official libnftables JSON API.
+NFTables.Port is the low-level communication layer that bridges Elixir and the Linux kernel's nftables firewall.
+
+Port component for [NFTables](https://github.com/dcoai/nftables). Provides a Zig-based native port executable for communicating with Linux nftables via the official libnftables JSON API.
 
 ## Overview
 
-NFTables.Port is the low-level communication layer that bridges Elixir and the Linux kernel's nftables firewall. It provides:
+NFTables.Port provides:
 
 - **Native Zig Port Executable** - High-performance port process with `CAP_NET_ADMIN` capability
 - **JSON Communication** - Uses the official nftables JSON API via libnftables
@@ -80,60 +82,19 @@ NFTables.Port.stop(pid)
 Typically, you'll use NFTables.Port indirectly through the NFTables high-level API, which provides a clean, idiomatic Elixir interface:
 
 ```elixir
-alias NFTables.{Table, Chain, RuleBuilder}
+{:ok, pid} = NFTables.Port.start_link()
 
-# NFTables automatically manages the port
-{:ok, pid} = NFTables.start_link()
+json_cmd =
+  Builder.new()
+  |> Builder.add(table: "filter", family: :inet)
+  |> Builder.add(chain: "INPUT", hook: :input, policy: :drop)
+  |> Builder.add(rule: tcp() |> dport(22) |> accept())
+  |> Builder.to_json()
 
-# Create table and chain
-Table.add(pid, %{name: "filter", family: :inet})
-Chain.add(pid, %{
-  table: "filter",
-  name: "input",
-  family: :inet,
-  type: :filter,
-  hook: :input,
-  priority: 0,
-  policy: :accept
-})
-
-# Build and commit firewall rules using the rule builder
-import RuleBuilder
-
-# Block a specific IP address
-rule =
-  new()
-  |> from_ipv4("192.168.1.100")
-  |> drop()
-  |> build("filter", "input")
-
-Chain.add_rule(pid, rule)
-
-# Allow established connections
-rule =
-  new()
-  |> ct_state([:established, :related])
-  |> accept()
-  |> build("filter", "input")
-
-Chain.add_rule(pid, rule)
-
-# Rate-limit SSH connections
-rule =
-  new()
-  |> to_port(22)
-  |> protocol(:tcp)
-  |> limit(rate: 10, per: :minute)
-  |> accept()
-  |> comment("Rate-limited SSH access")
-  |> build("filter", "input")
-
-Chain.add_rule(pid, rule)
-
-# All of these rules are converted to JSON and sent through NFTables.Port
+{:ok, json_response} = NFTables.Port.call(pid, json_cmd)
 ```
 
-The RuleBuilder provides a composable, type-safe way to build complex firewall rules. Behind the scenes, NFTables.Port handles all the JSON communication with nftables.
+NFTables.Builder provides a composable, type-safe way to build complex firewall rules. Behind the scenes, NFTables.Port handles all the JSON communication with nftables.
 
 ## Port Executable Location
 
@@ -164,6 +125,8 @@ The build process:
 
 ## Installing to System Location
 
+see [dev_docs/security.md] for information on how to keep you system secure.
+
 For production deployments, install the port executable to a system location:
 
 ```bash
@@ -179,7 +142,7 @@ sudo mix nftables_port.install /opt/nftables/bin/
 
 The install task:
 - Copies the compiled executable to the specified location
-- Sets executable permissions (755)
+- Sets executable permissions (750)
 - Sets `CAP_NET_ADMIN` capability with `setcap`
 - Provides clear instructions if any step fails
 

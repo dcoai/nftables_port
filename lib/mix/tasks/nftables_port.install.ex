@@ -86,7 +86,7 @@ defmodule Mix.Tasks.NftablesPort.Install do
     end
 
     # Set executable permissions
-    case System.cmd("chmod", ["755", install_path]) do
+    case System.cmd("chmod", ["750", install_path]) do
       {_, 0} ->
         Mix.shell().info("✓ Set executable permissions (755)")
 
