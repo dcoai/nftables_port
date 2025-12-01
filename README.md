@@ -16,16 +16,18 @@ NFTables.Port provides:
 
 ## Architecture
 
-```
-NFTables (High-level Elixir API)
-         ↓
-NFTables.Port (GenServer)
-         ↓
-Erlang Port (Zig executable)
-         ↓
-libnftables (C library)
-         ↓
-Linux Kernel (nftables)
+```mermaid
+flowchart TD
+    API[NFTables<br/>High-level Elixir API]
+    GenServer[NFTables.Port<br/>GenServer]
+    Port[Erlang Port<br/>Zig executable]
+    Lib[libnftables<br/>C library]
+    Kernel[Linux Kernel<br/>nftables]
+
+    API --> GenServer
+    GenServer --> Port
+    Port --> Lib
+    Lib --> Kernel
 ```
 
 ## Installation

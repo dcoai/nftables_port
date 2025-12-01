@@ -8,22 +8,25 @@ defmodule NFTables.Port do
 
   ## Architecture
 
-  ```
-  NFTables.Port (GenServer)
-         ↓
-  Erlang Port (Zig executable)
-         ↓
-  libnftables (C library)
-         ↓
-  Linux Kernel (nftables)
+  ```mermaid
+  flowchart TD
+      GenServer[NFTables.Port<br/>GenServer]
+      Port[Erlang Port<br/>Zig executable]
+      Lib[libnftables<br/>C library]
+      Kernel[Linux Kernel<br/>nftables]
+
+      GenServer --> Port
+      Port --> Lib
+      Lib --> Kernel
   ```
 
   ## Communication Flow
 
-  ```
-  Request:  Elixir JSON → [4-byte length][JSON bytes] → Zig → libnftables → kernel
-  Response: kernel → libnftables → Zig → [4-byte length][JSON bytes] → Elixir JSON
-  ```
+  **Request:**
+  Elixir JSON → [4-byte length][JSON bytes] → Zig → libnftables → kernel
+
+  **Response:**
+  kernel → libnftables → Zig → [4-byte length][JSON bytes] → Elixir JSON
 
   ## Protocol
 
