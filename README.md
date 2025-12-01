@@ -1,10 +1,10 @@
-# NFTablesEx.Port
+# NFTables.Port
 
-Port component for [NFTablesEx](https://github.com/yourusername/nftables_ex). Provides a Zig-based native port executable for communicating with Linux nftables via the official libnftables JSON API.
+Port component for [NFTables](https://github.com/yourusername/nftables). Provides a Zig-based native port executable for communicating with Linux nftables via the official libnftables JSON API.
 
 ## Overview
 
-NFTablesEx.Port is the low-level communication layer that bridges Elixir and the Linux kernel's nftables firewall. It provides:
+NFTables.Port is the low-level communication layer that bridges Elixir and the Linux kernel's nftables firewall. It provides:
 
 - **Native Zig Port Executable** - High-performance port process with `CAP_NET_ADMIN` capability
 - **JSON Communication** - Uses the official nftables JSON API via libnftables
@@ -15,9 +15,9 @@ NFTablesEx.Port is the low-level communication layer that bridges Elixir and the
 ## Architecture
 
 ```
-NFTablesEx (High-level Elixir API)
+NFTables (High-level Elixir API)
          ↓
-NFTablesEx.Port (GenServer)
+NFTables.Port (GenServer)
          ↓
 Erlang Port (Zig executable)
          ↓
@@ -28,12 +28,12 @@ Linux Kernel (nftables)
 
 ## Installation
 
-Add `nftables_ex_port` to your dependencies in `mix.exs`:
+Add `nftables_port` to your dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:nftables_ex_port, "~> 0.4.0"}
+    {:nftables_port, "~> 0.4.0"}
   ]
 end
 ```
@@ -62,28 +62,28 @@ This is done automatically during `mix compile` if you have sudo access.
 
 ```elixir
 # Start the port
-{:ok, pid} = NFTablesEx.Port.start_link()
+{:ok, pid} = NFTables.Port.start_link()
 
 # Send a request to list tables
 request = ~s({"nftables": [{"list": {"tables": {}}}]})
-{:ok, response} = NFTablesEx.Port.commit(pid, request)
+{:ok, response} = NFTables.Port.commit(pid, request)
 
 # Parse response
 {:ok, data} = Jason.decode(response)
 
 # Stop the port
-NFTablesEx.Port.stop(pid)
+NFTables.Port.stop(pid)
 ```
 
-### With NFTablesEx
+### With NFTables
 
-Typically, you'll use NFTablesEx.Port indirectly through the NFTablesEx high-level API, which provides a clean, idiomatic Elixir interface:
+Typically, you'll use NFTables.Port indirectly through the NFTables high-level API, which provides a clean, idiomatic Elixir interface:
 
 ```elixir
-alias NFTablesEx.{Table, Chain, RuleBuilder}
+alias NFTables.{Table, Chain, RuleBuilder}
 
-# NFTablesEx automatically manages the port
-{:ok, pid} = NFTablesEx.start_link()
+# NFTables automatically manages the port
+{:ok, pid} = NFTables.start_link()
 
 # Create table and chain
 Table.add(pid, %{name: "filter", family: :inet})
@@ -130,10 +130,10 @@ rule =
 
 Chain.add_rule(pid, rule)
 
-# All of these rules are converted to JSON and sent through NFTablesEx.Port
+# All of these rules are converted to JSON and sent through NFTables.Port
 ```
 
-The RuleBuilder provides a composable, type-safe way to build complex firewall rules. Behind the scenes, NFTablesEx.Port handles all the JSON communication with nftables.
+The RuleBuilder provides a composable, type-safe way to build complex firewall rules. Behind the scenes, NFTables.Port handles all the JSON communication with nftables.
 
 ## Port Executable Location
 
@@ -168,13 +168,13 @@ For production deployments, install the port executable to a system location:
 
 ```bash
 # Install to default location (/usr/local/sbin/port_nftables)
-sudo mix nftables_ex_port.install
+sudo mix nftables_port.install
 
 # Install to custom location
-sudo mix nftables_ex_port.install /usr/sbin/port_nftables
+sudo mix nftables_port.install /usr/sbin/port_nftables
 
 # Install to custom directory (will create port_nftables in that directory)
-sudo mix nftables_ex_port.install /opt/nftables/bin/
+sudo mix nftables_port.install /opt/nftables/bin/
 ```
 
 The install task:
@@ -183,7 +183,7 @@ The install task:
 - Sets `CAP_NET_ADMIN` capability with `setcap`
 - Provides clear instructions if any step fails
 
-After installation to a standard location (`/usr/local/sbin` or `/usr/sbin`), NFTablesEx.Port will automatically find the executable. For custom locations, set the `PORT_NFTABLES_PATH` environment variable:
+After installation to a standard location (`/usr/local/sbin` or `/usr/sbin`), NFTables.Port will automatically find the executable. For custom locations, set the `PORT_NFTABLES_PATH` environment variable:
 
 ```bash
 export PORT_NFTABLES_PATH=/opt/nftables/bin/port_nftables
@@ -216,10 +216,10 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Related Projects
 
-- [NFTablesEx](https://github.com/yourusername/nftables_ex) - High-level Elixir API for nftables
+- [NFTables](https://github.com/yourusername/nftables) - High-level Elixir API for nftables
 - [nftables](https://netfilter.org/projects/nftables/) - Linux kernel firewall
 
 ## Documentation
 
-Full documentation is available at [HexDocs](https://hexdocs.pm/nftables_ex_port).
+Full documentation is available at [HexDocs](https://hexdocs.pm/nftables_port).
 

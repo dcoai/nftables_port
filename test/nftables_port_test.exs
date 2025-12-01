@@ -1,11 +1,11 @@
-defmodule NFTablesEx.PortTest do
+defmodule NFTables.PortTest do
   use ExUnit.Case, async: false
 
   @moduletag :unified_port
 
   setup do
     # Start Unified port
-    {:ok, pid} = NFTablesEx.Port.start_link(check_capabilities: false)
+    {:ok, pid} = NFTables.Port.start_link(check_capabilities: false)
 
     # Clean up any existing test tables (best effort)
     cleanup_tables(pid)
@@ -13,7 +13,7 @@ defmodule NFTablesEx.PortTest do
     on_exit(fn ->
       if Process.alive?(pid) do
         cleanup_tables(pid)
-        NFTablesEx.Port.stop(pid)
+        NFTables.Port.stop(pid)
       end
     end)
 
@@ -24,7 +24,7 @@ defmodule NFTablesEx.PortTest do
     test "list tables with JSON string", %{port: pid} do
       cmd = ~s({"nftables": [{"list": {"tables": {"family": "inet"}}}]})
 
-      assert {:ok, response} = NFTablesEx.Port.commit(pid, cmd)
+      assert {:ok, response} = NFTables.Port.commit(pid, cmd)
       assert is_binary(response)
       assert {:ok, %{"nftables" => items}} = Jason.decode(response)
       assert is_list(items)
@@ -33,7 +33,7 @@ defmodule NFTablesEx.PortTest do
     test "add table with JSON string", %{port: pid} do
       cmd = ~s({"nftables": [{"add": {"table": {"family": "inet", "name": "unified_test_json"}}}]})
 
-      assert {:ok, response} = NFTablesEx.Port.commit(pid, cmd)
+      assert {:ok, response} = NFTables.Port.commit(pid, cmd)
       assert response == "" or is_binary(response)
 
       # Verify table was created
@@ -51,7 +51,7 @@ defmodule NFTablesEx.PortTest do
 
       # Delete it
       cmd = ~s({"nftables": [{"delete": {"table": {"family": "inet", "name": "unified_test_delete_json"}}}]})
-      assert {:ok, _} = NFTablesEx.Port.commit(pid, cmd)
+      assert {:ok, _} = NFTables.Port.commit(pid, cmd)
 
       # Verify it's gone
       tables = list_tables_json(pid, "inet")
@@ -81,7 +81,7 @@ defmodule NFTablesEx.PortTest do
     test "add chain with JSON", %{port: pid} do
       cmd = ~s({"nftables": [{"add": {"chain": {"family": "inet", "table": "unified_test_chains", "name": "input"}}}]})
 
-      assert {:ok, response} = NFTablesEx.Port.commit(pid, cmd)
+      assert {:ok, response} = NFTables.Port.commit(pid, cmd)
       assert response == "" or is_binary(response)
     end
   end
@@ -92,7 +92,7 @@ defmodule NFTablesEx.PortTest do
 
       cmd = ~s({"nftables": [{"add": {"chain": {"family": "inet", "table": "unified_test_int_json", "name": "test", "type": "filter", "hook": "input", "prio": 100, "policy": "accept"}}}]})
 
-      assert {:ok, response} = NFTablesEx.Port.commit(pid, cmd)
+      assert {:ok, response} = NFTables.Port.commit(pid, cmd)
       assert response == "" or is_binary(response)
 
       delete_table_json(pid, "inet", "unified_test_int_json")
@@ -103,7 +103,7 @@ defmodule NFTablesEx.PortTest do
 
       cmd = ~s({"nftables": [{"add": {"set": {"family": "inet", "table": "unified_test_nested", "name": "test_set", "type": "ipv4_addr", "elem": ["192.168.1.1", "10.0.0.1"]}}}]})
 
-      assert {:ok, response} = NFTablesEx.Port.commit(pid, cmd)
+      assert {:ok, response} = NFTables.Port.commit(pid, cmd)
       assert response == "" or is_binary(response)
 
       delete_table_json(pid, "inet", "unified_test_nested")
@@ -115,7 +115,7 @@ defmodule NFTablesEx.PortTest do
       cmd = ~s({"nftables": [{"list": {"chains": {"family": "inet", "table": "nonexistent"}}}]})
 
       # Should complete without crashing
-      assert {:ok, response} = NFTablesEx.Port.commit(pid, cmd)
+      assert {:ok, response} = NFTables.Port.commit(pid, cmd)
       assert is_binary(response)
     end
   end
@@ -146,17 +146,17 @@ defmodule NFTablesEx.PortTest do
   # JSON helpers
   defp create_table_json(pid, family, name) do
     cmd = ~s({"nftables": [{"add": {"table": {"family": "#{family}", "name": "#{name}"}}}]})
-    NFTablesEx.Port.commit(pid, cmd)
+    NFTables.Port.commit(pid, cmd)
   end
 
   defp delete_table_json(pid, family, name) do
     cmd = ~s({"nftables": [{"delete": {"table": {"family": "#{family}", "name": "#{name}"}}}]})
-    NFTablesEx.Port.commit(pid, cmd)
+    NFTables.Port.commit(pid, cmd)
   end
 
   defp list_tables_json(pid, family) do
     cmd = ~s({"nftables": [{"list": {"tables": {"family": "#{family}"}}}]})
-    {:ok, response} = NFTablesEx.Port.commit(pid, cmd)
+    {:ok, response} = NFTables.Port.commit(pid, cmd)
     {:ok, %{"nftables" => items}} = Jason.decode(response)
 
     items

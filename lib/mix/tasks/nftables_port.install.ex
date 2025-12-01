@@ -1,4 +1,4 @@
-defmodule Mix.Tasks.NftablesExPort.Install do
+defmodule Mix.Tasks.NftablesPort.Install do
   @moduledoc """
   Install the nftables port executable to a system location.
 
@@ -8,13 +8,13 @@ defmodule Mix.Tasks.NftablesExPort.Install do
   ## Usage
 
       # Install to default location (/usr/local/sbin/port_nftables)
-      mix nftables_ex_port.install
+      mix nftables_port.install
 
       # Install to custom location
-      mix nftables_ex_port.install /usr/sbin/port_nftables
+      mix nftables_port.install /usr/sbin/port_nftables
 
       # Install to custom directory (filename will be port_nftables)
-      mix nftables_ex_port.install /opt/nftables/bin
+      mix nftables_port.install /opt/nftables/bin
 
   ## What it does
 
@@ -32,10 +32,10 @@ defmodule Mix.Tasks.NftablesExPort.Install do
   ## Examples
 
       # System-wide installation
-      sudo mix nftables_ex_port.install
+      sudo mix nftables_port.install
 
       # Custom path
-      sudo mix nftables_ex_port.install /opt/myapp/bin/port_nftables
+      sudo mix nftables_port.install /opt/myapp/bin/port_nftables
 
       # Check if it worked
       getcap /usr/local/sbin/port_nftables
@@ -81,7 +81,7 @@ defmodule Mix.Tasks.NftablesExPort.Install do
         Mix.raise("""
         Failed to copy executable: #{inspect(reason)}
         Make sure you have write permissions to #{target_dir}
-        Try running with sudo: sudo mix nftables_ex_port.install
+        Try running with sudo: sudo mix nftables_port.install
         """)
     end
 
@@ -125,12 +125,12 @@ defmodule Mix.Tasks.NftablesExPort.Install do
   defp parse_install_path(_) do
     Mix.raise("""
     Too many arguments. Usage:
-      mix nftables_ex_port.install [PATH]
+      mix nftables_port.install [PATH]
 
     Examples:
-      mix nftables_ex_port.install
-      mix nftables_ex_port.install /usr/local/sbin/port_nftables
-      mix nftables_ex_port.install /opt/nftables/bin/
+      mix nftables_port.install
+      mix nftables_port.install /usr/local/sbin/port_nftables
+      mix nftables_port.install /opt/nftables/bin/
     """)
   end
 
@@ -160,7 +160,7 @@ defmodule Mix.Tasks.NftablesExPort.Install do
           Mix.raise("""
           Failed to create directory #{dir}: #{inspect(reason)}
           Make sure you have appropriate permissions.
-          Try running with sudo: sudo mix nftables_ex_port.install
+          Try running with sudo: sudo mix nftables_port.install
           """)
       end
     end
@@ -198,7 +198,7 @@ defmodule Mix.Tasks.NftablesExPort.Install do
 
                 Warning: Permission denied setting capabilities.
                 Please run with sudo:
-                  sudo mix nftables_ex_port.install
+                  sudo mix nftables_port.install
 
                 Or set capabilities manually:
                   sudo setcap cap_net_admin=ep #{path}

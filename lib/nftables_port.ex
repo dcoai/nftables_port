@@ -165,7 +165,7 @@ defmodule NFTables.Port do
       {:ok, response} = NFTables.Port.commit(pid, request)
 
       # With custom timeout
-      {:ok, response} = NFTablesEx.Port.commit(pid, request, 10_000)
+      {:ok, response} = NFTables.Port.commit(pid, request, 10_000)
   """
   def commit(pid, request, timeout \\ @default_timeout) when is_binary(request) do
     GenServer.call(pid, {:request, request}, timeout)
