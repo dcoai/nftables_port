@@ -1,5 +1,6 @@
 defmodule NFTables.Port do
   @moduledoc """
+
   GenServer managing the nftables port process with JSON communication.
 
   This module provides the low-level interface to nftables via a native Zig port
@@ -67,7 +68,7 @@ defmodule NFTables.Port do
       {:ok, response} = NFTables.Port.commit(pid, request)
 
       # Parse the response
-      {:ok, data} = Jason.decode(response)
+      {:ok, data} = JSON.decode(response)
 
   ## Direct Usage vs High-Level APIs
 

@@ -26,7 +26,7 @@ defmodule NFTables.PortTest do
 
       assert {:ok, response} = NFTables.Port.commit(pid, cmd)
       assert is_binary(response)
-      assert {:ok, %{"nftables" => items}} = Jason.decode(response)
+      assert {:ok, %{"nftables" => items}} = JSON.decode(response)
       assert is_list(items)
     end
 
@@ -157,7 +157,7 @@ defmodule NFTables.PortTest do
   defp list_tables_json(pid, family) do
     cmd = ~s({"nftables": [{"list": {"tables": {"family": "#{family}"}}}]})
     {:ok, response} = NFTables.Port.commit(pid, cmd)
-    {:ok, %{"nftables" => items}} = Jason.decode(response)
+    {:ok, %{"nftables" => items}} = JSON.decode(response)
 
     items
     |> Enum.filter(&Map.has_key?(&1, "table"))

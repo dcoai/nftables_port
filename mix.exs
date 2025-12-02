@@ -1,14 +1,14 @@
 defmodule NFTables.Port.MixProject do
   use Mix.Project
 
-  @version "0.4.0"
+  @version "0.4.1"
   @source_url "https://github.com/yourusername/nftables_port"
 
   def project do
     [
       app: :nftables_port,
       version: @version,
-      elixir: "~> 1.14",
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       compilers: Mix.compilers() ++ [:zig],
@@ -39,7 +39,6 @@ defmodule NFTables.Port.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:jason, "~> 1.4"},
       {:usage_rules, "~> 0.1.25", only: :dev},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false}
     ]
