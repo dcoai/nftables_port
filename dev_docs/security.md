@@ -17,8 +17,8 @@ The following items can help minimize risk when using this module and port.
 1. Don't put this in a BEAM VM which is reachable via the public network.
 2. Disable EPMD on the BEAM VM on which this will be running.
 3. This should not run on a BEAM VM with other unrelated applications.
-4. Running this as a short lived script.
-5. Do some real risk analysis and ensure that you have educated yourself and understand the ramificationsn of what a compromised service will result in... possible lost/stolen work, lost/stolen data, and many other things.  If routing is enabled the computer this is used on (which can be done), then the ramifications can be wider spread.
+4. Run as a short lived script.
+5. Do some real risk analysis and ensure that you have educated yourself and understand the ramificationsn of what a compromised service will result in... possible lost/stolen work, lost/stolen data, and many other terrible things.  If routing is enabled the computer this is used on (which can be done), then the ramifications can be wider spread.
 
 ## CAP_NET_ADMIN Capability
 
@@ -226,7 +226,7 @@ flowchart TD
     BEAM -->|"stdin/stdout<br/>(NO AUTHENTICATION)"| Port
 
     style BEAM fill:#ff9999
-    style Port fill:#ffcc99
+    style Port fill:#ff9966
 
     Network -.->|"⚠ Potential RCE here"| BEAM
     BEAM -.->|"⚠ Inherits CAP_NET_ADMIN"| Port
@@ -638,9 +638,3 @@ config :kernel,
 ### nftables Security
 - [nftables Wiki](https://wiki.nftables.org/)
 - [netfilter Documentation](https://www.netfilter.org/documentation/)
-
----
-
-**Document Version:** 2.0
-**Last Updated:** 2025-12-01
-**Focus:** CAP_NET_ADMIN, Port Process Security, BEAM/EPMD Security
