@@ -2,7 +2,7 @@ defmodule NFTables.Port.MixProject do
   use Mix.Project
 
   @version "0.4.1"
-  @source_url "https://github.com/yourusername/nftables_port"
+  @source_url "https://github.com/dcoai/nftables_port"
 
   def project do
     [
@@ -46,9 +46,11 @@ defmodule NFTables.Port.MixProject do
 
   defp description do
     """
-    Port component for NFTables. Provides a Zig-based port executable for
-    communicating with Linux nftables via the official libnftables JSON API.
-    This package handles the low-level communication with the kernel firewall.
+    NFTables.Port is an ELixir module that bridges Elixir and the
+    Linux kernel's nftables firewall via an Elixir port.  A Zig
+    executable passes JSON messages to libnftables JSON API and also
+    provides an interface to sysctl network parameters, providing a
+    way for elixir to manage Linux nftables and sysctl parameters.
     """
   end
 
@@ -60,7 +62,7 @@ defmodule NFTables.Port.MixProject do
       links: %{
         "GitHub" => @source_url
       },
-      maintainers: ["Your Name"],
+      maintainers: ["Doug ClymerOlson"],
       source_url: @source_url
     ]
   end
@@ -72,7 +74,18 @@ defmodule NFTables.Port.MixProject do
       source_url: @source_url,
       extras: [
         "README.md",
-        "LICENSE"
+        "LICENSE",
+        "dev_docs/architecture.md",
+        "dev_docs/capabilities.md",
+        "dev_docs/security.md"
+      ],
+      groups_for_extras: [
+        "Documentation": ["README.md", "LICENSE"],
+        "Development": [
+          "dev_docs/architecture.md",
+          "dev_docs/capabilities.md",
+          "dev_docs/security.md"
+        ]
       ]
     ]
   end
