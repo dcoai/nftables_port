@@ -1,414 +1,646 @@
-# Security Policy
+# Security Documentation
+
+This is a big scarey document, with the intent of helping with awareness of how things might go wrong if care isn't taken with this module.
 
 ## Overview
 
-NFTables.Port provides Elixir bindings to Linux nftables via libnftables. As firewall management is a security-critical operation, this document outlines security considerations, best practices, and the vulnerability disclosure policy.
+This module provides access to network configuration, it is important to have awareness of how this could be misused and what should be kept in mind when making use of this module.  If you find anything that is incorrect or missing submit a PR.
 
-## Privilege Requirements
+NFTables.Port is a security-critical component that bridges Elixir applications with the Linux kernel's nftables firewall subsystem. This document focuses specifically on the security implications of using Linux capabilities (`CAP_NET_ADMIN`) with a native port process in the context of the BEAM VM and Erlang distribution system.
 
-### CAP_NET_ADMIN Capability
+**Key Security Principle:** The port process with `CAP_NET_ADMIN` must be treated as a high-value target. A compromise of either the BEAM VM or the Erlang distribution system can lead to abuse of firewall modification capabilities.
 
-NFTables.Port requires the `CAP_NET_ADMIN` Linux capability to modify firewall rules. This is enforced at the native port level.
+## Primary Mitigations
 
-**Required Setup:**
+The following items can help minimize risk when using this module and port.
+
+1. Don't put this in a BEAM VM which is reachable via the public network.
+2. Disable EPMD on the BEAM VM on which this will be running.
+3. This should not run on a BEAM VM with other unrelated applications.
+4. Running this as a short lived script.
+5. Do some real risk analysis and ensure that you have educated yourself and understand the ramificationsn of what a compromised service will result in... possible lost/stolen work, lost/stolen data, and many other things.  If routing is enabled the computer this is used on (which can be done), then the ramifications can be wider spread.
+
+## CAP_NET_ADMIN Capability
+
+### What is CAP_NET_ADMIN?
+
+`CAP_NET_ADMIN` is a Linux capability that grants a process specific privileges related to network administration. It's part of Linux's capability system, which divides traditional root privileges into distinct units that can be granted independently.
+
+### Why NFTables.Port Needs CAP_NET_ADMIN
+
+The port executable requires `CAP_NET_ADMIN` to perform netlink operations that communicate with the kernel's nftables subsystem:
+
+1. **Open NETLINK_NETFILTER sockets** - Direct communication channel to the kernel firewall
+2. **Send nftables configuration commands** - Create/modify/delete firewall rules
+3. **Receive kernel responses** - Query current firewall state
+
+**Specific Operations Requiring CAP_NET_ADMIN:**
+- Creating/deleting nftables tables
+- Creating/deleting chains
+- Adding/removing firewall rules
+- Modifying sets (IP lists, port lists)
+- Querying firewall state
+
+Without this capability, all operations fail with `EPERM` (Operation not permitted).
+
+### Security Implications of CAP_NET_ADMIN
+
+`CAP_NET_ADMIN` is a powerful capability that allows:
+
+**What it enables:**
+- Modify firewall rules (intended use)
+- Configure network interfaces
+- Manage routing tables
+- Configure IPsec
+- Configure network namespaces
+
+**What it does NOT allow:**
+- Read arbitrary files
+- Write to arbitrary files
+- Kill other processes
+- Modify other users' processes
+- Gain additional capabilities
+
+**Attack Scenarios if CAP_NET_ADMIN is Compromised:**
+
+1. **Firewall Bypass** - Attacker opens holes in firewall to allow malicious traffic
+2. **Network Redirection** - Modify routing to intercept/redirect traffic
+3. **Denial of Service** - Drop all traffic with firewall rules
+4. **Data Exfiltration** - Redirect sensitive traffic to attacker-controlled servers
+5. **Lateral Movement** - Open firewall to enable attacks on other systems
+
+### Principle of Least Privilege
+
+NFTables.Port follows the principle of least privilege:
+
+- **Only the port binary** has `CAP_NET_ADMIN`, not the entire BEAM VM
+- The capability is set via **file capabilities** (`setcap cap_net_admin+ep`)
+- **No other capabilities** are granted to the port process
+- The BEAM VM runs as a **regular unprivileged user**
+
+## Port Process Security Model
+
+### Architecture Overview
+
+```mermaid
+flowchart TD
+    BEAM["BEAM VM (Unprivileged)<br/>- No special capabilities<br/>- Regular user permissions<br/>- Manages port lifecycle"]
+    Port["port_nftables (Separate Process)<br/>+ CAP_NET_ADMIN capability<br/>- Isolated from BEAM memory<br/>- Validates all input<br/>- Security hardening applied"]
+    Kernel["Linux Kernel (nftables)"]
+
+    BEAM -->|"spawn via Port.open()<br/>stdin/stdout communication"| Port
+    Port -->|"Netlink protocol"| Kernel
+```
+
+### How Erlang Ports Work
+
+**Key Characteristics:**
+1. **Separate OS Process** - The port runs as its own process, completely separate from the BEAM VM
+2. **Parent-Child Relationship** - BEAM spawns the port via `fork()` + `execve()`
+3. **Communication** - stdin/stdout with 4-byte length-prefixed packets
+4. **Fault Isolation** - Port crashes don't crash the BEAM VM (only GenServer terminates)
+
+**Important: Fault Isolation ≠ Security Isolation**
+
+While crashes are isolated, **security is NOT isolated**:
+- BEAM controls the port's stdin (can send arbitrary data)
+- BEAM can send signals to the port
+- BEAM can terminate the port at any time
+
+### Capability Inheritance
+
+**How Capabilities are Inherited:**
+
+When the BEAM VM spawns the port process:
+
+1. **Before spawn:** Port binary has file capability `cap_net_admin+ep` (set via `setcap`)
+2. **During execve():** Kernel automatically grants `CAP_NET_ADMIN` to the new process
+3. **After spawn:** Port process has `CAP_NET_ADMIN` in its effective and permitted sets
+4. **BEAM VM never has `CAP_NET_ADMIN`** - it's inherited by the port binary, not the parent
+
+**File Capability Format:**
 ```bash
-# For the recommended main port:
-sudo setcap cap_net_admin=ep priv/port_nftables
-
-# Or for other ports:
-sudo setcap cap_net_admin=ep priv/port_nftables
-sudo setcap cap_net_admin=ep priv/port_nftables
+sudo setcap cap_net_admin+ep priv/port_nftables
+#                          │└─ p = permitted (capability is permitted)
+#                          └── e = effective (capability is effective at startup)
 ```
 
-**Security Implications:**
-- `CAP_NET_ADMIN` allows modification of network configuration
-- This is a powerful capability that should be carefully controlled
-- Only grant this capability to trusted executables
-- The port binary includes security checks for file permissions
+### Security Hardening Measures
 
-### File Permissions
+The port implements multiple layers of defense:
 
-The port binary **MUST NOT** have world-readable, world-writable, or world-executable permissions when `CAP_NET_ADMIN` is set.
+#### 1. File Permission Validation
 
-**Enforced Permissions:**
-- Owner: read + execute (5)
-- Group: read + execute (5) or no access (0)
-- Other: **no access (0)**
+**Enforced at Startup:**
 
-**Valid:** `750` (rwxr-x---) or `700` (rwx------)
-**Invalid:** `755` (rwxr-xr-x) - will be rejected
+The port checks its own file permissions before processing any requests:
 
-The native port will refuse to start if invalid permissions are detected with capabilities set.
-
-## Security Best Practices
-
-### 1. Input Validation
-
-#### Table, Chain, and Set Names
-- Always validate names before passing to NFTables.Port
-- Maximum length: typically 256 characters
-- Avoid special characters that could cause issues
-- Do not construct names from untrusted user input directly
-
-```elixir
-# BAD: Direct user input
-user_table = params["table_name"]
-Table.create(pid, %{name: user_table, family: :inet})
-
-# GOOD: Validate and sanitize
-defp validate_table_name(name) when is_binary(name) do
-  if String.length(name) > 0 and String.length(name) <= 64 and
-     String.match?(name, ~r/^[a-z][a-z0-9_]*$/) do
-    {:ok, name}
-  else
-    {:error, :invalid_name}
-  end
-end
+```
+Required: 750 (rwxr-x---) or 700 (rwx------)
+Rejected: 755 (rwxr-xr-x) - world-executable
 ```
 
-#### IP Addresses
-- Use string format (`"192.168.1.100"`)
-- Validate IP address format before use
-- Use `:inet.parse_address/1` for validation
+**Rationale:** If the binary is world-executable, any user could execute it and inherit `CAP_NET_ADMIN`. By rejecting loose permissions, we prevent unauthorized users from gaining network admin capabilities.
 
-```elixir
-# GOOD: Validate IP before use
-case :inet.parse_address(String.to_charlist(user_ip)) do
-  {:ok, {a, b, c, d}} ->
-    ip_string = "#{a}.#{b}.#{c}.#{d}"
-    Rule.block_ip(pid, "filter", "INPUT", ip_string)
-  {:error, :einval} ->
-    {:error, :invalid_ip}
-end
+**Implementation:** See `native/src/port.zig` - permission check before main loop
+
+#### 2. PR_SET_NO_NEW_PRIVS Flag
+
+**What it does:** Prevents the process from ever gaining additional privileges
+
+```c
+prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
 ```
 
-#### Port Numbers
-- Validate range: 0-65535
-- RuleBuilder includes guard clauses for this
-- Validate before passing to low-level functions
+**Protection against:**
+- Executing setuid binaries (would normally grant elevated privileges)
+- Gaining capabilities through file capabilities on other executables
+- Privilege escalation exploits
 
-```elixir
-# GOOD: RuleBuilder validates automatically
-RuleBuilder.match_dest_port(builder, port)  # Guards ensure 0 <= port <= 65535
+**Result:** Even if an attacker finds a code execution vulnerability in the port, they cannot escalate to gain additional privileges beyond `CAP_NET_ADMIN`.
 
-# If using low-level API, validate:
-defp validate_port(port) when port >= 0 and port <= 65535, do: {:ok, port}
-defp validate_port(_), do: {:error, :invalid_port}
+#### 3. PR_SET_DUMPABLE=0 Flag
+
+**What it does:** Prevents core dumps and debugging of the process
+
+```c
+prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
 ```
 
-### 2. Log Prefix Sanitization
+**Protection against:**
+- Core dump memory disclosure (if port crashes, no core file created)
+- Debugging via `ptrace()` (prevents attaching debuggers)
+- Reading `/proc/<pid>/mem` and other process memory
 
-Log prefixes are written to kernel logs. Sanitize them to prevent:
-- Log injection
-- Excessive log size
-- Special characters causing issues
+**Rationale:** Core dumps and debuggers could leak sensitive information like:
+- Environment variables
+- Memory contents of firewall rules
+- JSON messages in transit
 
-```elixir
-# GOOD: Sanitize log prefixes
-defp sanitize_log_prefix(prefix) do
-  prefix
-  |> String.slice(0, 127)  # Max length
-  |> String.replace(~r/[^\x20-\x7E]/, "")  # Only printable ASCII
-end
+#### 4. Capability Dropping
 
-log_prefix = sanitize_log_prefix(user_input)
-RuleBuilder.log(builder, log_prefix)
+**Current behavior:** Port keeps `CAP_NET_ADMIN` for its entire lifecycle
+
+**Best practice:** Port should drop all capabilities except `CAP_NET_ADMIN` from the bounding set
+
+**Implementation location:** `native/src/capabilities.zig`
+
+#### 5. Input Validation
+
+**All JSON input from BEAM is validated:**
+- JSON schema validation
+- Length limits on strings
+- Type checking
+- Range validation
+
+keep in mind this does not protect at all from malicious messages if the BEAM VM is compromised.
+
+### Process Isolation
+
+**What's Isolated:**
+- Memory space (port cannot read BEAM memory, BEAM cannot read port memory)
+- File descriptors (separate fd tables)
+- Crash boundaries (port crash → GenServer terminate, not VM crash)
+
+**What's NOT Isolated:**
+- stdin/stdout (BEAM controls what port receives)
+- Signals (BEAM can send signals to port)
+- Filesystem (same filesystem access)
+- Network (same network namespace)
+
+## Security Implications with BEAM/EPMD
+
+This section covers security concerns specific to running a capability-enabled port in the Erlang/Elixir ecosystem.
+
+### Trust Boundary
+
+**Critical Understanding:** There is NO security boundary between BEAM and the port process.  Consequently, if BEAM is compromised, the hosts network will be as well.
+
+```mermaid
+flowchart TD
+    Network["UNTRUSTED NETWORK"]
+    BEAM["Elixir Application<br/>(BEAM VM)"]
+    Port["port_nftables<br/>+ CAP_NET_ADMIN"]
+
+    Network -->|"HTTP/WebSocket/etc"| BEAM
+    BEAM -->|"stdin/stdout<br/>(NO AUTHENTICATION)"| Port
+
+    style BEAM fill:#ff9999
+    style Port fill:#ffcc99
+
+    Network -.->|"⚠ Potential RCE here"| BEAM
+    BEAM -.->|"⚠ Inherits CAP_NET_ADMIN"| Port
 ```
 
-### 3. Rate Limiting
+**Implication:** If an attacker achieves remote code execution in your Elixir application, they can send arbitrary JSON to the port and modify firewall rules, or change sysctl network parameters.
 
-Always apply rate limiting to services exposed to the internet:
+### BEAM Compromise Scenarios
 
+#### Scenario 1: Web Application Vulnerability → RCE (Remote Code Execution)
+
+**Attack Chain:**
+1. Attacker finds RCE vulnerability in web application (SQL injection → code exec, deserialization bug, etc.)
+2. Attacker gains code execution in BEAM VM
+3. Attacker locates the NFTables.Port GenServer (via `:erlang.processes()` + `:sys.get_state/1`)
+4. Attacker sends malicious JSON commands to port's stdin
+5. Port executes commands (has CAP_NET_ADMIN)
+6. Firewall is compromised
+
+**Example Attack Code (if attacker achieves code exec):**
 ```elixir
-# GOOD: Rate-limited SSH
-Policy.allow_ssh(pid, rate_limit: 10)  # 10 connections per minute
+# Attacker running in compromised BEAM
+{:ok, pid} = NFTables.Port.start_link()
 
-# GOOD: Rate-limited web service
-RuleBuilder.new(pid, "filter", "INPUT")
-|> RuleBuilder.match_dest_port(80)
-|> RuleBuilder.rate_limit(100, :second, burst: 200)
-|> RuleBuilder.accept()
-|> RuleBuilder.commit()
-```
-
-### 4. Default Deny Policy
-
-Always use a default DROP policy for security:
-
-```elixir
-# GOOD: Default DROP, explicit ACCEPT
-Chain.create(pid, %{
-  table: "filter",
-  name: "INPUT",
-  family: :inet,
-  type: :filter,
-  hook: :input,
-  priority: 0,
-  policy: :drop  # Default deny
+# Open firewall to attacker's server
+malicious_json = ~s({
+  "nftables": [{
+    "add": {
+      "rule": {
+        "family": "inet",
+        "table": "filter",
+        "chain": "input",
+        "expr": [{"accept": null}]
+      }
+    }
+  }]
 })
 
-# Then add explicit ACCEPT rules
-Policy.accept_loopback(pid)
-Policy.accept_established(pid)
-Policy.allow_ssh(pid, rate_limit: 10)
+NFTables.Port.commit(pid, malicious_json)
 ```
 
-### 5. Established Connection Handling
+**Mitigation:**
+- First, don't make a web application that uses this module. (primary defense)
+- If you absolutely must, Secure your web application
+- Validate all JSON at port level (defense in depth)
+- Monitor firewall changes (detection)
+- Rate limit port operations (slow down attacker)
 
-Always accept established/related connections:
+#### Scenario 2: Erlang Distribution Compromise
 
-```elixir
-# GOOD: Accept established connections early
-Policy.accept_established(pid)
+**Attack Chain:**
+1. Attacker gains access to Erlang distribution cookie (`.erlang.cookie` file, env var, brute force)
+2. Attacker connects to node using cookie
+3. Attacker executes `:rpc.call(node, NFTables.Port, :commit, [pid, malicious_json])`
+4. Firewall is compromised
 
-# Or with RuleBuilder:
-RuleBuilder.new(pid, "filter", "INPUT")
-|> RuleBuilder.match_ct_state([:established, :related])
-|> RuleBuilder.accept()
-|> RuleBuilder.commit()
+**Mitigation:**
+- Disable `epmd` on BEAM instances this runs on.
+- or if you must have it: Firewall Erlang distribution ports (4369, high ports)
+- Use TLS for distribution (`-proto_dist inet_tls`)
+- Strong cookie (not default)
+- Don't expose EPMD to public networks
+
+### EPMD Security Concerns
+
+#### What is EPMD?
+
+**EPMD (Erlang Port Mapper Daemon)** is a name service for Erlang nodes:
+
+- Runs on TCP port **4369** (well-known port)
+- Maps node names to distribution ports
+- **No authentication** by default
+- Starts automatically when first Erlang node starts
+
+**Example EPMD interaction:**
+```bash
+# Query EPMD (unauthenticated)
+$ epmd -names
+epmd: up and running on port 4369 with data:
+name myapp at port 35467
+
+# Attacker now knows:
+# - Node name: myapp
+# - Distribution port: 35467
 ```
 
-### 6. Drop Invalid Packets
+#### EPMD as Attack Vector
 
-Drop packets with invalid connection tracking state:
+**Problem:** EPMD leaks cluster topology to unauthenticated network peers.
 
-```elixir
-# GOOD: Drop invalid packets early
-Policy.drop_invalid(pid)
-```
+**Attack Scenario:**
+1. **Enumeration:** Attacker connects to port 4369, queries node names and ports
+2. **Port Discovery:** Attacker learns distribution port (e.g., 35467)
+3. **Cookie Brute Force:** Attacker attempts to connect with common cookies
+4. **Cluster Access:** If cookie is guessed, attacker gains full cluster access
+5. **RCE:** Attacker uses `:rpc.call/4` to execute arbitrary code
+6. **Port Compromise:** Attacker sends malicious commands to capability-enabled port
 
-## Common Security Pitfalls
+**Real-World Data:**
+- Shodan shows 85,000+ publicly accessible EPMD instances
+- Default cookies are predictable (`~/.erlang.cookie` often has weak generation)
+- MD5 challenge-response (not cryptographically secure)
 
-### ❌ Don't: Unrestricted Rule Creation from User Input
+#### EPMD Hardening
 
-```elixir
-# BAD: Direct user input to firewall
-def block_user_ip(pid, user_ip) do
-  Rule.block_ip(pid, "filter", "INPUT", user_ip)
-end
-```
+**1. Bind to Loopback (Recommended)**
 
-### ✅ Do: Validate and Sanitize All Input
-
-```elixir
-# GOOD: Validate before use
-def block_user_ip(pid, user_ip) do
-  with {:ok, validated_ip} <- validate_ip_address(user_ip),
-       :ok <- check_not_local_ip(validated_ip),
-       :ok <- rate_limit_rule_creation() do
-    Rule.block_ip(pid, "filter", "INPUT", validated_ip)
-  end
-end
-```
-
-### ❌ Don't: Run NFTables.Port as Root
-
-```elixir
-# BAD: Running as root unnecessarily
-# Run with sudo when only CAP_NET_ADMIN is needed
-```
-
-### ✅ Do: Use Capabilities, Not Root
+Prevent EPMD from accepting external connections:
 
 ```bash
-# GOOD: Set capability, run as unprivileged user
-sudo setcap cap_net_admin=ep priv/port_nftables
-chmod 750 priv/port_nftables
-# Now run as regular user
+# Set before starting any Erlang node
+export ERL_EPMD_ADDRESS=127.0.0.1
+
+# Or in systemd unit file
+Environment="ERL_EPMD_ADDRESS=127.0.0.1"
 ```
 
-### ❌ Don't: Allow Arbitrary Table/Chain Names
+**2. Firewall EPMD Port**
 
-```elixir
-# BAD: User controls table name directly
-def create_user_table(pid, table_name) do
-  Table.create(pid, %{name: table_name, family: :inet})
-end
+```bash
+# Allow only from internal network
+iptables -A INPUT -p tcp --dport 4369 -s 10.0.0.0/8 -j ACCEPT
+iptables -A INPUT -p tcp --dport 4369 -j DROP
+
+# Or with nftables
+nft add rule inet filter input tcp dport 4369 ip saddr 10.0.0.0/8 accept
+nft add rule inet filter input tcp dport 4369 drop
 ```
 
-### ✅ Do: Use Predefined Tables/Chains
+**3. Use Custom EPMD Port**
 
-```elixir
-# GOOD: Whitelist allowed tables
-@allowed_tables ["filter", "nat", "mangle"]
-
-def create_user_table(pid, table_name) when table_name in @allowed_tables do
-  Table.create(pid, %{name: table_name, family: :inet})
-end
+```bash
+export ERL_EPMD_PORT=12345  # Non-standard port
 ```
 
-### ❌ Don't: Construct Rules from Untrusted Sources
+**4. Firewall Distribution Ports**
 
-```elixir
-# BAD: Rule template from user
-def create_custom_rule(pid, user_rule_config) do
-  # This is dangerous!
-end
+Distribution uses high ephemeral ports. Restrict the range and firewall it:
+
+```bash
+# In vm.args or releases
+-kernel inet_dist_listen_min 9100
+-kernel inet_dist_listen_max 9200
+
+# Firewall
+nft add rule inet filter input tcp dport 9100-9200 ip saddr 10.0.0.0/8 accept
+nft add rule inet filter input tcp dport 9100-9200 drop
 ```
 
-### ✅ Do: Use Predefined Rule Templates
+### Cookie Authentication Weaknesses
+
+**How Cookie Auth Works:**
+
+1. Node A connects to Node B
+2. Node B sends challenge (random bytes)
+3. Node A computes: `MD5(Challenge ++ Cookie)`
+4. Node B verifies response matches `MD5(Challenge ++ Cookie_own)`
+5. If match → authenticated
+
+**Security Issues:**
+
+1. **MD5 is broken** - Cryptographically insecure hash function
+2. **No forward secrecy** - Same cookie used for all connections
+3. **No MITM protection** - Cookie can be intercepted if sniffed
+4. **Brute force feasible** - MD5 is fast, cookies often weak
+
+**Common Weak Cookies:**
+- `cookie` (default in some setups)
+- Hostname-based (predictable)
+- Short random strings (brute-forceable)
+
+**Better Cookie Generation:**
+```bash
+# Generate strong random cookie
+openssl rand -base64 32 > ~/.erlang.cookie
+chmod 400 ~/.erlang.cookie
+```
+
+### stdin/stdout Security
+
+**Protocol:** BEAM ↔ Port communication via stdin/stdout
+
+**Characteristics:**
+- **No encryption** - All data in plaintext
+- **No authentication** - BEAM is assumed to own the port
+- **No integrity protection** - BEAM can send arbitrary bytes
+
+**Threat Model:**
+
+If BEAM is compromised:
+- Attacker controls stdin → Can send malicious JSON
+- Attacker reads stdout → Can see firewall state
+- No defense at this layer
+
+**Mitigation:**
+
+Realistically if we are here, all is lost.
+
+### Attack Vectors Summary
+
+| Attack Vector | Entry Point | Impact | Mitigation |
+|---------------|-------------|--------|------------|
+| **Web RCE → BEAM** | Application vulnerability | Full port control | Secure application code |
+| **EPMD enumeration** | Port 4369 | Cluster topology leak | Firewall + bind to localhost |
+| **Cookie brute force** | Distribution port | Full cluster access | Strong cookie + TLS |
+| **stdin injection** | Compromised BEAM | Malicious port commands | Input validation at port |
+| **Binary tampering** | Filesystem write access | Replace port with malicious version | File permissions + integrity monitoring |
+| **Signal attacks** | Compromised BEAM | DoS (SIGKILL port) | Monitor port restarts |
+
+### Defense in Depth Strategy
+
+**Layer 1: Network Perimeter**
+- Firewall EPMD (port 4369) to internal networks only
+- Firewall distribution ports (9100-9200) to internal networks
+- Use TLS for distribution (`-proto_dist inet_tls`)
+
+**Layer 2: Erlang Distribution**
+- Strong random cookie (32+ bytes, cryptographically random)
+- Bind EPMD to localhost when possible
+- Consider not running distributed mode if not needed
+
+**Layer 3: Application Security**
+- Secure web application (prevent RCE)
+- Input validation before calling NFTables.Port
+- Rate limiting on firewall operations
+- Logging and monitoring
+
+**Layer 4: Port Process**
+- File permission validation (750/700)
+- JSON schema validation
+- Semantic validation (table names, families, etc.)
+- Input length limits
+
+**Layer 5: System Security**
+- SELinux/AppArmor policies
+- Filesystem integrity monitoring (AIDE, Tripwire)
+- Process monitoring (unexpected CAP_NET_ADMIN processes)
+- Audit logging (`auditd`)
+
+## Hardening Guidelines
+
+### Production Deployment Checklist
+
+**EPMD/Distribution:**
+- [ ] EPMD bound to localhost (`ERL_EPMD_ADDRESS=127.0.0.1`)
+- [ ] Port 4369 firewalled to internal networks only
+- [ ] Distribution ports firewalled (9100-9200 to internal only)
+- [ ] Strong cookie (32+ bytes, generated via `openssl rand -base64 32`)
+- [ ] Cookie file has permissions 400 (`chmod 400 ~/.erlang.cookie`)
+- [ ] TLS enabled for distribution (`-proto_dist inet_tls`)
+
+**Port Binary:**
+- [ ] CAP_NET_ADMIN set (`getcap priv/port_nftables` shows `cap_net_admin+ep`)
+- [ ] File permissions 750 or 700 (`ls -l priv/port_nftables`)
+- [ ] Binary owned by application user, not root
+- [ ] Binary location not world-writable (`/opt/app/priv/`, not `/tmp/`)
+
+**System:**
+- [ ] Application runs as non-root user
+- [ ] AppArmor/SELinux profiles applied (if available)
+- [ ] File integrity monitoring enabled (AIDE/Tripwire)
+- [ ] Audit logging enabled (`auditd` with capability monitoring)
+
+**Monitoring:**
+- [ ] Alert on unexpected processes with CAP_NET_ADMIN
+- [ ] Alert on distribution connections from unexpected IPs
+- [ ] Alert on port process crashes/restarts
+- [ ] Log all firewall rule changes
+- [ ] Monitor EPMD connection attempts
+
+### Monitoring Examples
+
+**Detect Unexpected CAP_NET_ADMIN Processes:**
+
+```bash
+#!/bin/bash
+# Check for processes with CAP_NET_ADMIN that aren't our port
+
+EXPECTED_PORT="port_nftables"
+
+for pid in /proc/[0-9]*; do
+  capeff=$(grep CapEff: $pid/status 2>/dev/null | awk '{print $2}')
+  # CAP_NET_ADMIN is bit 12 (0x1000 in hex)
+  if [[ $((0x$capeff & 0x1000)) -ne 0 ]]; then
+    cmdline=$(cat $pid/cmdline 2>/dev/null | tr '\0' ' ')
+    if [[ ! "$cmdline" =~ "$EXPECTED_PORT" ]]; then
+      echo "ALERT: Unexpected CAP_NET_ADMIN process: $cmdline (PID: ${pid##*/})"
+    fi
+  fi
+done
+```
+
+**Monitor Port Restarts:**
 
 ```elixir
-# GOOD: Predefined templates only
-def apply_rule_template(pid, :block_ip, ip) do
-  with {:ok, validated_ip} <- validate_ip(ip) do
-    Rule.block_ip(pid, "filter", "INPUT", validated_ip)
+defmodule NFTables.PortMonitor do
+  use GenServer
+
+  def init(_) do
+    {:ok, %{restarts: 0, last_restart: nil}}
+  end
+
+  def handle_info({:port_exit, reason}, state) do
+    new_state = %{
+      restarts: state.restarts + 1,
+      last_restart: DateTime.utc_now()
+    }
+
+    # Alert if too many restarts
+    if new_state.restarts > 5 do
+      Logger.error("SECURITY ALERT: Port restarted #{new_state.restarts} times")
+      # Send alert to security monitoring
+    end
+
+    {:noreply, new_state}
   end
 end
 ```
 
-## Secure Configuration Examples
+**Monitor Firewall Changes:**
 
-### Basic Secure Server
-
-```elixir
-# Secure baseline firewall
-{:ok, pid} = NFTables.Port.start_link()
-
-# One-line secure setup
-:ok = Policy.setup_basic_firewall(pid,
-  allow_services: [:ssh],
-  ssh_rate_limit: 10  # Prevent brute force
-)
-
-# Add custom service with rate limit
-RuleBuilder.new(pid, "filter", "INPUT")
-|> RuleBuilder.match_dest_port(8080)
-|> RuleBuilder.rate_limit(100, :second, burst: 50)
-|> RuleBuilder.log("API-ACCESS: ")
-|> RuleBuilder.accept()
-|> RuleBuilder.commit()
+```bash
+# Log all nft commands via auditd
+auditctl -w /usr/sbin/nft -p x -k nftables_exec
+auditctl -w /proc/net/netlink -p rwa -k netlink_access
 ```
 
-### Hardened Web Server
+### TLS Configuration for Distribution
 
-```elixir
-{:ok, pid} = NFTables.Port.start_link()
+**Generate Certificates:**
 
-# Default deny
-:ok = Policy.setup_basic_firewall(pid,
-  allow_services: []  # No services by default
-)
+```bash
+# CA certificate
+openssl req -x509 -newkey rsa:4096 -keyout ca-key.pem -out ca-cert.pem -days 3650 -nodes
 
-# HTTP with strict rate limiting
-:ok = Policy.allow_http(pid, rate_limit: 100)
-
-# HTTPS with rate limiting
-:ok = Policy.allow_https(pid, rate_limit: 100)
-
-# SSH with very strict rate limiting
-:ok = Policy.allow_ssh(pid, rate_limit: 5, log: true)
-
-# Drop and log port scans (common scanner ports)
-for port <- [23, 135, 139, 445, 3389] do
-  RuleBuilder.new(pid, "filter", "INPUT")
-  |> RuleBuilder.match_dest_port(port)
-  |> RuleBuilder.log("PORTSCAN-#{port}: ")
-  |> RuleBuilder.drop()
-  |> RuleBuilder.commit()
-end
+# Node certificate
+openssl req -newkey rsa:4096 -keyout node-key.pem -out node-req.pem -nodes
+openssl x509 -req -in node-req.pem -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial -out node-cert.pem -days 3650
 ```
 
-## Vulnerability Disclosure
+**Configure Erlang/Elixir:**
 
-### Reporting Security Issues
+```elixir
+# config/runtime.exs
+config :kernel,
+  inet_dist_use_interface: {127, 0, 0, 1},  # Bind to localhost
+  inet_dist_listen_min: 9100,
+  inet_dist_listen_max: 9200
 
-**Please do not report security vulnerabilities through public GitHub issues.**
+# vm.args
+-proto_dist inet_tls
+-ssl_dist_optfile /path/to/ssl_dist.config
+```
 
-Instead, please report them via:
-- Email: [security contact email]
-- GitHub Security Advisories: [repository security tab]
-
-Include:
-- Type of vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if available)
-
-### What to Expect
-
-- **Acknowledgment:** Within 48 hours
-- **Initial Assessment:** Within 1 week
-- **Fix Timeline:** Depends on severity
-  - Critical: 1-7 days
-  - High: 1-2 weeks
-  - Medium: 2-4 weeks
-  - Low: 4-8 weeks
-
-### Disclosure Policy
-
-- We will acknowledge your report
-- We will investigate and work on a fix
-- We will keep you informed of progress
-- We will credit you in the security advisory (if desired)
-- We will coordinate disclosure timing with you
+**ssl_dist.config:**
+```erlang
+[
+  {server, [
+    {certfile, "/path/to/node-cert.pem"},
+    {keyfile, "/path/to/node-key.pem"},
+    {cacertfile, "/path/to/ca-cert.pem"},
+    {verify, verify_peer},
+    {fail_if_no_peer_cert, true}
+  ]},
+  {client, [
+    {certfile, "/path/to/node-cert.pem"},
+    {keyfile, "/path/to/node-key.pem"},
+    {cacertfile, "/path/to/ca-cert.pem"},
+    {verify, verify_peer}
+  ]}
+].
+```
 
 ## Security Checklist
 
-When deploying NFTables.Port in production:
+### Critical Security Items
 
-- [ ] CAP_NET_ADMIN capability set correctly
-- [ ] Port binary has secure permissions (750 or 700)
-- [ ] Running as non-root user
-- [ ] Default DROP policy enabled
-- [ ] Loopback traffic accepted
-- [ ] Established/related connections accepted
-- [ ] Invalid packets dropped
-- [ ] All services have rate limiting
-- [ ] Logging enabled for security events
-- [ ] Input validation on all user-provided data
-- [ ] Table/chain names from whitelist only
-- [ ] IP addresses validated before use
-- [ ] Port numbers validated
-- [ ] Log prefixes sanitized
-- [ ] No direct user input to firewall rules
+- [ ] **CAP_NET_ADMIN set correctly** on port binary only
+- [ ] **File permissions 750 or 700** on port binary (not 755)
+- [ ] **EPMD bound to localhost** or firewalled
+- [ ] **Distribution ports firewalled** to internal network
+- [ ] **Strong cookie** (32+ bytes, cryptographically random)
+- [ ] **TLS enabled** for distribution (production)
+- [ ] **Port runs as non-root** user
+- [ ] **JSON validation** in port process
+- [ ] **Monitoring enabled** for CAP_NET_ADMIN processes
+- [ ] **Alert on port crashes** (potential attack indicator)
+
+### Additional Hardening
+
+- [ ] SELinux/AppArmor profiles applied
+- [ ] File integrity monitoring (AIDE/Tripwire)
+- [ ] Audit logging enabled (`auditd`)
 - [ ] Regular security updates applied
-- [ ] Monitoring and alerting configured
-
-## Security Features
-
-### Built-In Security
-
-NFTables.Port includes several built-in security features:
-
-1. **Permission Validation**
-   - Port binary checks file permissions before starting
-   - Refuses to run with insecure permissions when capabilities are set
-
-2. **Capability Enforcement**
-   - Requires CAP_NET_ADMIN
-   - Will not run without proper capabilities
-
-3. **Port Isolation**
-   - Crashes in native port don't affect BEAM VM
-   - Fault isolation prevents VM corruption
-
-4. **Resource Cleanup**
-   - Automatic cleanup of native resources
-   - Prevents resource leaks
-
-5. **Type Safety**
-   - Elixir type specs throughout
-   - Guard clauses for parameter validation
+- [ ] Incident response plan documented
+- [ ] Security testing performed (penetration test)
 
 ## Further Reading
 
-- [Linux Capabilities](https://man7.org/linux/man-pages/man7/capabilities.7.html)
+### Linux Capabilities
+- [capabilities(7) man page](https://man7.org/linux/man-pages/man7/capabilities.7.html)
+- [Linux Capability FAQ](https://www.kernel.org/doc/html/latest/userspace-api/no_new_privs.html)
+
+### Erlang Distribution Security
+- [Erlang Distribution Protocol](https://www.erlang.org/doc/apps/erts/erl_dist_protocol.html)
+- [Securing Erlang Distribution](https://www.erlang.org/doc/apps/ssl/ssl_distribution.html)
+- [EPMD Security Considerations](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/epmd)
+
+### nftables Security
 - [nftables Wiki](https://wiki.nftables.org/)
 - [netfilter Documentation](https://www.netfilter.org/documentation/)
-- [Best Practices for Firewall Rules](https://www.netfilter.org/documentation/HOWTO/packet-filtering-HOWTO.html)
-
-## Version History
-
-- **v0.3.0:** Added comprehensive security documentation
-- **v0.2.0:** Added permission validation
-- **v0.1.0:** Initial release with CAP_NET_ADMIN requirement
-
-## Contact
-
-For security concerns: [security contact]
-For general issues: GitHub Issues
 
 ---
 
-**Last Updated:** November 5, 2025
+**Document Version:** 2.0
+**Last Updated:** 2025-12-01
+**Focus:** CAP_NET_ADMIN, Port Process Security, BEAM/EPMD Security
