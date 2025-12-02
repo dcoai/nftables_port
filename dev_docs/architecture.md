@@ -407,15 +407,15 @@ When the port crashes, the GenServer also terminates. Supervisor can restart if 
 flowchart TD
     start([PORT_NFTABLES_PATH env var]) --> check1{Exists?}
     check1 -->|Yes| use1[Use this path]
-    check1 -->|No| path2[/usr/local/sbin/port_nftables]
+    check1 -->|No| path2["/usr/local/sbin/port_nftables"]
 
     path2 --> check2{Exists?}
     check2 -->|Yes| use2[Use this path]
-    check2 -->|No| path3[/usr/sbin/port_nftables]
+    check2 -->|No| path3["/usr/sbin/port_nftables"]
 
     path3 --> check3{Exists?}
     check3 -->|Yes| use3[Use this path]
-    check3 -->|No| path4[priv/port_nftables]
+    check3 -->|No| path4["priv/port_nftables"]
 
     path4 --> check4{Exists?}
     check4 -->|Yes| use4[Use this path]
