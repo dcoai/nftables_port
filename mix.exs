@@ -47,17 +47,14 @@ defmodule NFTables.Port.MixProject do
   defp description do
     """
     NFTables.Port is an ELixir module that bridges Elixir and the
-    Linux kernel's nftables firewall via an Elixir port.  A Zig
-    executable passes JSON messages to libnftables JSON API and also
-    provides an interface to sysctl network parameters, providing a
-    way for elixir to manage Linux nftables and sysctl parameters.
+    Linux kernel's nftables firewall via an Elixir port.
     """
   end
 
   defp package do
     [
       name: "nftables_port",
-      files: ~w(lib priv native/.build.zig native/.build.zig.zon native/src .formatter.exs mix.exs README.md LICENSE),
+      files: ~w(lib priv native/build.zig native/src .formatter.exs mix.exs README.md LICENSE),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url
